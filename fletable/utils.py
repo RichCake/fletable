@@ -2,35 +2,41 @@ import flet as ft
 
 
 class LoginView(ft.View):
-    """Login form view for user authentication.
-
-    Creates an interface for user authentication with login and password fields.
-    Validates user credentials against the database and displays appropriate
-    error messages.
-
-    :param user_table: Name of the database table containing user data
-    :type user_table: str
-    :param user_login_col: Name of the column in the table containing user logins
-    :type user_login_col: str
-    :param user_password_col: Name of the column in the table containing user passwords
-    :type user_password_col: str
-    :param dbapi_cursor: Database cursor for executing SQL queries
-    :type dbapi_cursor: dbapi.cursor
-
-    Example::
-
+    """
+    Форма входа с проверкой логина/пароля по БД.
+    
+    Параметры:
+    - user_table: имя таблицы с пользователями
+    - user_login_col: название колонки с логином в БД
+    - user_password_col: название колонки с паролем в БД
+    - dbapi_cursor: курсор БД для выполнения запросов
+    - next: функция, вызываемая после успешного входа (обычно для перехода на главную)
+    - user_role_col: колонка с ролью в БД (опционально)
+    - user_role_key: ключ для сохранения роли в page.client_storage (опционально)
+    - user_id_col: колонка с ID пользователя в БД (опционально)
+    - user_id_key: ключ для сохранения ID в page.client_storage (опционально)
+    
+    Пример:
+        def after_login(page):
+            page.go("/main")
+        
         login_view = LoginView(
-            user_table="employees",
+            user_table="users",
             user_login_col="login",
             user_password_col="password",
             dbapi_cursor=connection.cursor(),
+            next=after_login,
+            user_role_col="role",
+            user_role_key="current_user_role",  # ключ в client_storage
+            user_id_col="user_id",
+            user_id_key="current_user_id"  # ключ в client_storage
         )
         page.views.append(login_view)
-        page.update()
     """
 
     def __init__(
         self,
+        page,
         user_table,
         user_login_col,
         user_password_col,
@@ -42,6 +48,7 @@ class LoginView(ft.View):
         user_id_key=None,
     ):
         super().__init__()
+        self.page = page
         self.user_table = user_table
         self.user_login_col = user_login_col
         self.user_password_col = user_password_col
