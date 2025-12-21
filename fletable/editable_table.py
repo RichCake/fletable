@@ -15,7 +15,7 @@ class ForeignKeyConfig:
 class FieldConfig:
     label: str
     foreign_key: ForeignKeyConfig | None = None
-    field_type: str | None = None  # "text", "date", "datetime", "number", etc.
+    field_type: str | None = None  # "text", "date", "datetime", "time", "number", etc.
 
 
 class EditableTable:
@@ -26,11 +26,11 @@ class EditableTable:
     - Добавление, редактирование, удаление записей
     - Выбор строк через чекбоксы
     - Автоматические dropdown для foreign key (*_id поля)
-    - DatePicker/TimePicker для полей типа date/datetime
+    - DatePicker/TimePicker для полей типа date/datetime/time
     - Фильтрация через WHERE-условия
     
     Советы:
-    - Для дат явно указывайте field_type="date" или "datetime" в FieldConfig
+    - Для дат/времени явно указывайте field_type="date", "datetime" или "time" в FieldConfig
     - Используйте get_selected_rows() для получения отмеченных строк
     
     Автогенерация FK (dropdown):
@@ -49,6 +49,7 @@ class EditableTable:
                 "name": "Название",
                 "user_id": FieldConfig(label="Исполнитель"),  # автоматический FK
                 "deadline": FieldConfig(label="Срок", field_type="date"),
+                "start_time": FieldConfig(label="Время начала", field_type="time"),
             },
             where_clause="status = %s",
             where_params=("active",)
@@ -395,6 +396,163 @@ class EditableTable:
         
         return container
 
+    def _create_time_field(self, field: str, label: str, value=None):
+        """
+        Создаёт поле для выбора времени с TimePicker.
+        Возвращает Container с TextField и кнопкой для открытия выбора времени.
+        """
+        # Форматируем начальное значение для отображения (российский формат HH:MM)
+        display_value = ""
+        db_value = None
+        
+        if value:
+            if isinstance(value, datetime):
+                display_value = value.strftime("%H:%M")
+                db_value = value.strftime("%H:%M:%S")
+            else:
+                # Пытаемся распарсить строку
+                value_str = str(value)
+                if value_str:
+                    try:
+                        # Пробуем разные форматы времени
+                        for fmt in ["%H:%M:%S.%f", "%H:%M:%S", "%H:%M"]:
+                            try:
+                                dt = datetime.strptime(value_str, fmt)
+                                display_value = dt.strftime("%H:%M")
+                                db_value = dt.strftime("%H:%M:%S")
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            display_value = value_str
+                            db_value = value_str
+                    except:
+                        display_value = value_str
+                        db_value = value_str
+        
+        # Текстовое поле для отображения выбранного времени
+        text_field = ft.TextField(
+            label=label,
+            value=display_value,
+            read_only=True,
+            expand=True,
+        )
+        
+        # TimePicker
+        picker_key = f"{field}_{id(text_field)}"
+        
+        def on_time_change(e):
+            if e.control.value:
+                selected_time = e.control.value
+                text_field.value = selected_time.strftime("%H:%M")
+                container.data['time_value'] = selected_time.strftime("%H:%M:%S")
+                e.page.update()
+        
+        time_picker = ft.TimePicker(
+            on_change=on_time_change,
+        )
+        
+        self.date_pickers[picker_key] = time_picker
+        
+        # Кнопка для открытия TimePicker
+        def open_time_picker(e):
+            e.page.open(time_picker)
+        
+        time_button = ft.IconButton(
+            icon=ft.Icons.ACCESS_TIME,
+            tooltip="Выбрать время",
+            on_click=open_time_picker,
+        )
+        
+        # Container с полем и кнопкой
+        container = ft.Container(
+            content=ft.Row([text_field, time_button], spacing=5),
+            expand=True,
+            data={'time_value': db_value}
+        )
+        
+        return container
+
+    def _create_time_field_inline(self, field: str, value=None):
+        """
+        Создаёт inline поле для выбора времени (для использования в таблице).
+        Возвращает Row с минимальным TextField и иконкой.
+        """
+        # Форматируем начальное значение для отображения (российский формат HH:MM)
+        display_value = ""
+        db_value = None
+        
+        if value:
+            if isinstance(value, datetime):
+                display_value = value.strftime("%H:%M")
+                db_value = value.strftime("%H:%M:%S")
+            else:
+                # Пытаемся распарсить строку
+                value_str = str(value)
+                if value_str:
+                    try:
+                        # Пробуем разные форматы времени
+                        for fmt in ["%H:%M:%S.%f", "%H:%M:%S", "%H:%M"]:
+                            try:
+                                dt = datetime.strptime(value_str, fmt)
+                                display_value = dt.strftime("%H:%M")
+                                db_value = dt.strftime("%H:%M:%S")
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            display_value = value_str
+                            db_value = value_str
+                    except:
+                        display_value = value_str
+                        db_value = value_str
+        
+        # Текстовое поле для отображения выбранного времени
+        text_field = ft.TextField(
+            value=display_value,
+            read_only=True,
+            border=ft.InputBorder.NONE,
+            text_size=14,
+            expand=True,
+        )
+        
+        # TimePicker
+        picker_key = f"{field}_{id(text_field)}"
+        
+        def on_time_change(e):
+            if e.control.value:
+                selected_time = e.control.value
+                text_field.value = selected_time.strftime("%H:%M")
+                container.data['time_value'] = selected_time.strftime("%H:%M:%S")
+                e.page.update()
+        
+        time_picker = ft.TimePicker(
+            on_change=on_time_change,
+        )
+        
+        self.date_pickers[picker_key] = time_picker
+        
+        # Кнопка для открытия TimePicker
+        def open_time_picker(e):
+            e.page.open(time_picker)
+        
+        time_icon = ft.IconButton(
+            icon=ft.Icons.ACCESS_TIME,
+            icon_size=16,
+            tooltip="Выбрать время",
+            on_click=open_time_picker,
+        )
+        
+        # Container с полем и иконкой
+        container = ft.Row(
+            [text_field, time_icon],
+            spacing=2,
+            expand=True,
+        )
+        container.data = {'time_value': db_value}
+        
+        return container
+
     def create_add_form(self):
         new_fields = {}
         input_controls = []
@@ -420,6 +578,13 @@ class EditableTable:
                     value=None,
                     is_datetime=field_type == "datetime"
                 )
+            elif field_type == "time":
+                # Создаём поле с кнопкой для выбора времени
+                ctrl = self._create_time_field(
+                    field=field,
+                    label=self.field_configs[field].label,
+                    value=None
+                )
             else:
                 ctrl = ft.TextField(label=self.field_configs[field].label, expand=True)
 
@@ -432,9 +597,14 @@ class EditableTable:
                 placeholders = ", ".join(["%s"] * len(new_fields))
                 values = []
                 for field_name, ctrl in new_fields.items():
-                    # Для DateField получаем значение из data атрибута
-                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict) and 'date_value' in ctrl.data:
-                        values.append(ctrl.data['date_value'])
+                    # Для DateField и TimeField получаем значение из data атрибута
+                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict):
+                        if 'date_value' in ctrl.data:
+                            values.append(ctrl.data['date_value'])
+                        elif 'time_value' in ctrl.data:
+                            values.append(ctrl.data['time_value'])
+                        else:
+                            values.append(ctrl.value)
                     else:
                         values.append(ctrl.value)
                 
@@ -446,9 +616,12 @@ class EditableTable:
                 
                 # Очищаем поля
                 for field_name, ctrl in new_fields.items():
-                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict) and 'date_value' in ctrl.data:
-                        # Для date полей: Container -> content (Row) -> controls[0] (TextField)
-                        ctrl.data['date_value'] = None
+                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict):
+                        # Для date/time полей: Container -> content (Row) -> controls[0] (TextField)
+                        if 'date_value' in ctrl.data:
+                            ctrl.data['date_value'] = None
+                        if 'time_value' in ctrl.data:
+                            ctrl.data['time_value'] = None
                         if hasattr(ctrl, 'content') and hasattr(ctrl.content, 'controls'):
                             text_field = ctrl.content.controls[0]
                             text_field.value = ""
@@ -534,6 +707,16 @@ class EditableTable:
                         padding=5,
                         expand=True,
                     )
+                elif field_type == "time":
+                    # Для времени создаём специальное поле
+                    ctrl = ft.Container(
+                        content=self._create_time_field_inline(
+                            field=field,
+                            value=value
+                        ),
+                        padding=5,
+                        expand=True,
+                    )
                 else:
                     ctrl = ft.Container(
                         content=ft.TextField(
@@ -543,8 +726,8 @@ class EditableTable:
                         expand=True,
                     )
 
-                # Для date полей сохраняем Container, а не его content
-                if field_type in ("date", "datetime"):
+                # Для date/time полей сохраняем Container, а не его content
+                if field_type in ("date", "datetime", "time"):
                     field_controls[field] = ctrl.content
                 else:
                     field_controls[field] = ctrl.content
@@ -559,9 +742,14 @@ class EditableTable:
                         )
                         values = []
                         for field_name, ctrl in controls.items():
-                            # Для date полей получаем значение из data атрибута
-                            if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict) and 'date_value' in ctrl.data:
-                                values.append(ctrl.data['date_value'])
+                            # Для date/time полей получаем значение из data атрибута
+                            if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict):
+                                if 'date_value' in ctrl.data:
+                                    values.append(ctrl.data['date_value'])
+                                elif 'time_value' in ctrl.data:
+                                    values.append(ctrl.data['time_value'])
+                                else:
+                                    values.append(ctrl.value)
                             else:
                                 values.append(ctrl.value)
                         

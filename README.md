@@ -7,7 +7,10 @@
 - 📝 **Редактируемые таблицы** — изменение, добавление и удаление записей прямо в интерфейсе
 - 👀 **Таблицы только для чтения** — отображение данных с возможностью выбора строк
 - 🔗 **Автоматическая обработка внешних ключей** — dropdown-списки для связанных таблиц
+- 📅 **Поддержка дат и времени** — DatePicker и TimePicker для удобного ввода дат/времени
+- 🇷🇺 **Российский формат дат** — автоматическое форматирование дат (dd.mm.yyyy HH:MM)
 - ✅ **Множественный выбор** — чекбоксы для выделения строк
+- 🔍 **Фильтрация данных** — поддержка WHERE-условий для выборки
 - 🔐 **Встроенная форма авторизации** — готовый компонент для входа пользователей
 - 🎨 **Настраиваемые подписи полей** — удобное отображение имен колонок
 
@@ -32,7 +35,7 @@ pip install -e .
 ```python
 import flet as ft
 import psycopg2
-from fletable import EditableTable, FieldConfig
+from fletable import EditableTable, FieldConfig, ForeignKeyConfig
 
 def main(page: ft.Page):
     # Подключение к базе данных
@@ -59,8 +62,12 @@ def main(page: ft.Page):
                     id_column="department_id",
                     label_column="department_name"
                 )
-            )
+            ),
+            "hire_date": FieldConfig(label="Дата приёма", field_type="date"),
+            "birth_date": FieldConfig(label="Дата рождения", field_type="date")
         },
+        where_clause="active = %s",
+        where_params=(True,)
     )
     
     # Форма добавления
@@ -97,7 +104,7 @@ ft.app(target=main)
 
 ```python
 import flet as ft
-from fletable import SqlTable
+from fletable import SqlTable, FieldConfig
 
 def main(page: ft.Page):
     # Подключение к БД
@@ -111,8 +118,11 @@ def main(page: ft.Page):
             "product_id": "ID",
             "product_name": "Название",
             "price": "Цена",
-            "category_id": "Категория"
-        }
+            "category_id": "Категория",
+            "created_at": FieldConfig(label="Создано", field_type="datetime")
+        },
+        where_clause="price > %s",
+        where_params=(100,)
     )
     
     # Кнопка для получения выделенных строк
@@ -149,6 +159,7 @@ def main(page: ft.Page):
         page.update()
     
     login_view = LoginView(
+        page=page,
         user_table="users",
         user_login_col="login",
         user_password_col="password",
@@ -180,7 +191,9 @@ EditableTable(
     table_name: str,                 # Имя таблицы в БД
     field_mapping: dict,             # Маппинг полей {column: label или FieldConfig}
     width: int = 800,                # Ширина таблицы (пикселей)
-    height: int = 400                # Высота таблицы (пикселей)
+    height: int = 400,               # Высота таблицы (пикселей)
+    where_clause: str | None = None, # WHERE-условие для фильтрации (опционально)
+    where_params: tuple | None = None # Параметры для WHERE-условия (опционально)
 )
 ```
 
@@ -202,7 +215,9 @@ SqlTable(
     table_name: str,                 # Имя таблицы
     field_mapping: dict,             # Маппинг полей
     width: int = 800,
-    height: int = 400
+    height: int = 400,
+    where_clause: str | None = None, # WHERE-условие для фильтрации (опционально)
+    where_params: tuple | None = None # Параметры для WHERE-условия (опционально)
 )
 ```
 
@@ -218,8 +233,9 @@ SqlTable(
 ```python
 @dataclass
 class FieldConfig:
-    label: str                       # Отображаемое название поля
+    label: str                                   # Отображаемое название поля
     foreign_key: ForeignKeyConfig | None = None  # Конфигурация внешнего ключа
+    field_type: str | None = None                # Тип поля: "text", "date", "datetime", "time"
 ```
 
 ### ForeignKeyConfig
@@ -240,29 +256,41 @@ class ForeignKeyConfig:
 
 ```python
 LoginView(
+    page: ft.Page,                   # Объект страницы Flet
     user_table: str,                 # Таблица с пользователями
     user_login_col: str,             # Колонка с логином
     user_password_col: str,          # Колонка с паролем
     dbapi_cursor,                    # Курсор БД
     next: callable,                  # Функция после успешного входа
     user_role_col: str = None,       # Колонка с ролью (опционально)
-    user_role_key: str = None,       # Ключ для хранения роли
-    user_id_col: str = None,         # Колонка с ID пользователя
-    user_id_key: str = None          # Ключ для хранения ID
+    user_role_key: str = None,       # Ключ для хранения роли в page.client_storage
+    user_id_col: str = None,         # Колонка с ID пользователя (опционально)
+    user_id_key: str = None          # Ключ для хранения ID в page.client_storage
 )
 ```
 
 ## 🔧 Автоматическая обработка внешних ключей
 
-Fletable автоматически создает dropdown-списки для полей с именами, заканчивающимися на `_id` (кроме первичного ключа таблицы):
+Fletable автоматически создает dropdown-списки для полей с именами, заканчивающимися на `_id` (кроме первичного ключа таблицы).
+
+### Требования для автогенерации
+
+- Поле должно заканчиваться на `_id` (например: `user_id`, `category_id`)
+- Не должно быть primary key самой таблицы (`task_id` в таблице `tasks` не станет FK)
+- Ожидается таблица с именем без `_id`: `user_id` → таблица `user`
+- По умолчанию ищет колонки: `user_id` (id) и `user` (название) в таблице `user`
+
+### Пример автоматической обработки
 
 ```python
 field_mapping = {
-    "order_id": "ID заказа",
+    "order_id": "ID заказа",        # Primary key - не будет dropdown
     "customer_id": "Клиент",        # Автоматически создаст dropdown из таблицы "customer"
     "product_id": "Товар"           # Автоматически создаст dropdown из таблицы "product"
 }
 ```
+
+### Кастомная настройка с ForeignKeyConfig
 
 Для более точной настройки используйте `ForeignKeyConfig`:
 
@@ -272,12 +300,52 @@ field_mapping = {
     "customer_id": FieldConfig(
         label="Клиент",
         foreign_key=ForeignKeyConfig(
-            table="customers",
-            id_column="customer_id",
-            label_column="full_name"
+            table="customers",           # Название таблицы отличается от шаблона
+            id_column="customer_id",     # Колонка с ID
+            label_column="full_name"     # Колонка для отображения (не "customer")
         )
     )
 }
+```
+
+## 📅 Работа с датами и временем
+
+Fletable поддерживает удобный ввод дат и времени через встроенные пикеры с автоматическим форматированием.
+
+### Поддерживаемые типы
+
+```python
+field_mapping = {
+    "event_date": FieldConfig(label="Дата события", field_type="date"),       # Только дата: 13.12.2025
+    "created_at": FieldConfig(label="Создано", field_type="datetime"),        # Дата и время: 13.12.2025 14:30
+    "start_time": FieldConfig(label="Время начала", field_type="time")        # Только время: 14:30
+}
+```
+
+### Особенности
+
+- **DatePicker** для полей типа `date` и `datetime`
+- **TimePicker** для полей типа `time` и `datetime`
+- Автоматическое форматирование:
+  - Отображение в российском формате (dd.mm.yyyy HH:MM)
+  - Сохранение в БД в формате ISO (YYYY-MM-DD HH:MM:SS)
+- Поддержка различных форматов при чтении из БД
+
+### Пример с расписанием
+
+```python
+table = EditableTable(
+    cursor=cursor,
+    table_name="schedule",
+    field_mapping={
+        "id": "ID",
+        "event_name": "Событие",
+        "event_date": FieldConfig(label="Дата", field_type="date"),
+        "start_time": FieldConfig(label="Начало", field_type="time"),
+        "end_time": FieldConfig(label="Конец", field_type="time"),
+        "created_at": FieldConfig(label="Создано", field_type="datetime")
+    }
+)
 ```
 
 ## 💡 Примеры использования
@@ -318,6 +386,44 @@ def delete_selected(e):
     refresh_table(e)
 ```
 
+### Фильтрация данных с WHERE
+
+```python
+# Показать только активных сотрудников из конкретного отдела
+table = EditableTable(
+    cursor=cursor,
+    table_name="employees",
+    field_mapping={
+        "employee_id": "ID",
+        "name": "Имя",
+        "department_id": "Отдел",
+        "active": "Активен"
+    },
+    where_clause="active = %s AND department_id = %s",
+    where_params=(True, 5)
+)
+```
+
+### Динамическая смена фильтра
+
+```python
+def filter_by_department(e):
+    department_id = department_dropdown.value
+    
+    # Создаём новую таблицу с фильтром
+    new_table = EditableTable(
+        cursor=cursor,
+        table_name="employees",
+        field_mapping=field_mapping,
+        where_clause="department_id = %s",
+        where_params=(department_id,)
+    )
+    
+    # Обновляем контейнер
+    table_container.content = new_table.create_table()
+    page.update()
+```
+
 ## 🗄️ Поддерживаемые базы данных
 
 Fletable работает с любыми базами данных, поддерживающими DB-API 2.0:
@@ -344,8 +450,8 @@ MIT License
 
 ## 👨‍💻 Автор
 
-**RichCake**  
-Email: abs2016123@gmail.com
+**RichCake**
+Email: arseniikarpov.evro@gmail.com
 
 ---
 
