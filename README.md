@@ -149,22 +149,13 @@ import flet as ft
 from fletable import LoginView
 
 def main(page: ft.Page):
-    def after_login(page):
-        # Переход на главную страницу после успешного входа
-        page.views.append(
-            ft.View("/home", [
-                ft.Text("Добро пожаловать!")
-            ])
-        )
-        page.update()
-    
     login_view = LoginView(
         page=page,
         user_table="users",
         user_login_col="login",
         user_password_col="password",
         dbapi_cursor=cursor,
-        next=after_login,
+        redirect_route="/home",
         user_role_col="role",
         user_role_key="user_role",
         user_id_col="user_id",
@@ -235,7 +226,10 @@ SqlTable(
 class FieldConfig:
     label: str                                   # Отображаемое название поля
     foreign_key: ForeignKeyConfig | None = None  # Конфигурация внешнего ключа
-    field_type: str | None = None                # Тип поля: "text", "date", "datetime", "time"
+    field_type: str | None = None                # Тип поля: "text", "date", "datetime", "time", "image"
+    default_image: str | None = None             # Путь к картинке по умолчанию для field_type="image"
+    image_width: int = 72                        # Фиксированная ширина картинки для field_type="image"
+    image_height: int = 72                       # Фиксированная высота картинки для field_type="image"
 ```
 
 ### ForeignKeyConfig
@@ -261,11 +255,11 @@ LoginView(
     user_login_col: str,             # Колонка с логином
     user_password_col: str,          # Колонка с паролем
     dbapi_cursor,                    # Курсор БД
-    next: callable,                  # Функция после успешного входа
+    redirect_route: str,             # Route для редиректа после успешного входа
     user_role_col: str = None,       # Колонка с ролью (опционально)
-    user_role_key: str = None,       # Ключ для хранения роли в page.client_storage
+    user_role_key: str = None,       # Ключ для хранения роли в page.session.store
     user_id_col: str = None,         # Колонка с ID пользователя (опционально)
-    user_id_key: str = None          # Ключ для хранения ID в page.client_storage
+    user_id_key: str = None          # Ключ для хранения ID в page.session.store
 )
 ```
 

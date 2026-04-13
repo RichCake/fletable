@@ -15,7 +15,10 @@ class ForeignKeyConfig:
 class FieldConfig:
     label: str
     foreign_key: ForeignKeyConfig | None = None
-    field_type: str | None = None  # "text", "date", "datetime", "time", "number", etc.
+    field_type: str | None = None  # "text", "date", "datetime", "time", "image", "number", etc.
+    default_image: str | None = None
+    image_width: int = 72
+    image_height: int = 72
 
 
 class EditableTable:
@@ -31,6 +34,7 @@ class EditableTable:
     
     Советы:
     - Для дат/времени явно указывайте field_type="date", "datetime" или "time" в FieldConfig
+    - Для изображений используйте field_type="image" (в значении поля хранится путь к файлу)
     - Используйте get_selected_rows() для получения отмеченных строк
     
     Автогенерация FK (dropdown):
@@ -85,6 +89,7 @@ class EditableTable:
         self.row_checkboxes: list[tuple[ft.Checkbox, dict]] = []  # (checkbox, row_data)
         self.header_checkbox: ft.Checkbox = None
         self.date_pickers: dict[str, ft.DatePicker] = {}  # Хранилище DatePicker'ов
+        self.file_pickers: list[ft.FilePicker] = []  # Хранилище FilePicker'ов
 
     def _detect_field_types(self) -> dict[str, str]:
         """
@@ -96,6 +101,20 @@ class EditableTable:
         for field, cfg in self.field_configs.items():
             field_types[field] = cfg.field_type or "text"
         return field_types
+
+    def _get_data_row_min_height(self) -> int:
+        """
+        Возвращает минимальную высоту строки таблицы с учетом image-полей.
+        """
+        image_heights = [
+            cfg.image_height
+            for cfg in self.field_configs.values()
+            if cfg.field_type == "image"
+        ]
+        if not image_heights:
+            return 48
+        # +16 для внутренних отступов контейнера ячейки (padding=5 + запас)
+        return max(48, max(image_heights) + 16)
 
     def _generate_dropdown_options(self):
         options = {}
@@ -198,6 +217,7 @@ class EditableTable:
                 selected_date = e.control.value
                 container.data['date_part'] = selected_date.strftime("%Y-%m-%d")
                 update_display()
+                e.page.pop_dialog()
                 e.page.update()
         
         date_picker = ft.DatePicker(
@@ -208,7 +228,7 @@ class EditableTable:
         
         # Кнопка для открытия DatePicker
         def open_date_picker(e):
-            e.page.open(date_picker)
+            e.page.show_dialog(date_picker)
         
         calendar_button = ft.IconButton(
             icon=ft.Icons.CALENDAR_TODAY,
@@ -225,6 +245,7 @@ class EditableTable:
                     selected_time = e.control.value
                     container.data['time_part'] = selected_time.strftime("%H:%M:%S")
                     update_display()
+                    e.page.pop_dialog()
                     e.page.update()
             
             time_picker = ft.TimePicker(
@@ -235,7 +256,7 @@ class EditableTable:
             self.date_pickers[time_picker_key] = time_picker
             
             def open_time_picker(e):
-                e.page.open(time_picker)
+                e.page.show_dialog(time_picker)
             
             time_button = ft.IconButton(
                 icon=ft.Icons.ACCESS_TIME,
@@ -337,6 +358,7 @@ class EditableTable:
                 selected_date = e.control.value
                 container.data['date_part'] = selected_date.strftime("%Y-%m-%d")
                 update_display()
+                e.page.pop_dialog()
                 e.page.update()
         
         date_picker = ft.DatePicker(
@@ -347,7 +369,7 @@ class EditableTable:
         
         # Кнопка для открытия DatePicker
         def open_date_picker(e):
-            e.page.open(date_picker)
+            e.page.show_dialog(date_picker)
         
         calendar_icon = ft.IconButton(
             icon=ft.Icons.CALENDAR_TODAY,
@@ -365,6 +387,7 @@ class EditableTable:
                     selected_time = e.control.value
                     container.data['time_part'] = selected_time.strftime("%H:%M:%S")
                     update_display()
+                    e.page.pop_dialog()
                     e.page.update()
             
             time_picker = ft.TimePicker(
@@ -375,7 +398,7 @@ class EditableTable:
             self.date_pickers[time_picker_key] = time_picker
             
             def open_time_picker(e):
-                e.page.open(time_picker)
+                e.page.show_dialog(time_picker)
             
             time_icon = ft.IconButton(
                 icon=ft.Icons.ACCESS_TIME,
@@ -446,6 +469,7 @@ class EditableTable:
                 selected_time = e.control.value
                 text_field.value = selected_time.strftime("%H:%M")
                 container.data['time_value'] = selected_time.strftime("%H:%M:%S")
+                e.page.pop_dialog()
                 e.page.update()
         
         time_picker = ft.TimePicker(
@@ -456,7 +480,7 @@ class EditableTable:
         
         # Кнопка для открытия TimePicker
         def open_time_picker(e):
-            e.page.open(time_picker)
+            e.page.show_dialog(time_picker)
         
         time_button = ft.IconButton(
             icon=ft.Icons.ACCESS_TIME,
@@ -524,6 +548,7 @@ class EditableTable:
                 selected_time = e.control.value
                 text_field.value = selected_time.strftime("%H:%M")
                 container.data['time_value'] = selected_time.strftime("%H:%M:%S")
+                e.page.pop_dialog()
                 e.page.update()
         
         time_picker = ft.TimePicker(
@@ -534,7 +559,7 @@ class EditableTable:
         
         # Кнопка для открытия TimePicker
         def open_time_picker(e):
-            e.page.open(time_picker)
+            e.page.show_dialog(time_picker)
         
         time_icon = ft.IconButton(
             icon=ft.Icons.ACCESS_TIME,
@@ -553,7 +578,116 @@ class EditableTable:
         
         return container
 
+    def _create_image_field_inline(self, field: str, value=None):
+        """
+        Создаёт inline отображение изображения с выбором файла через FilePicker.
+        """
+        cfg = self.field_configs[field]
+        image_path = "" if value is None else str(value)
+        default_image = cfg.default_image or ""
+        preview_src = image_path or default_image
+        file_picker = ft.FilePicker()
+        self.file_pickers.append(file_picker)
+        preview = ft.Image(
+            src=preview_src,
+            width=cfg.image_width,
+            height=cfg.image_height,
+            # fit=ft.BoxFit.CONTAIN,
+        )
+        row = ft.Row(
+            [preview],
+            spacing=8,
+            expand=True,
+            data={
+                "image_value": image_path,
+                "default_image": default_image,
+                "image_preview": preview,
+            },
+        )
+
+        async def open_file_picker(e):
+            files = await file_picker.pick_files(
+                dialog_title="Выберите изображение",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"],
+                allow_multiple=False,
+            )
+            if files:
+                selected = files[0]
+                selected_path = selected.path or selected.name or ""
+                preview.src = selected_path or default_image
+                row.data["image_value"] = selected_path
+                e.page.update()
+
+        pick_button = ft.IconButton(
+            icon=ft.Icons.FOLDER_OPEN,
+            icon_size=16,
+            tooltip="Выбрать файл",
+            on_click=open_file_picker,
+        )
+        row.controls.append(pick_button)
+        return row
+
+    def _create_image_field(self, field: str, label: str, value=None, default_image: str | None = None):
+        """
+        Создаёт поле с превью изображения и выбором файла через FilePicker.
+        Возвращает Container, значение пути хранится в data['image_value'].
+        """
+        cfg = self.field_configs[field]
+        image_path = "" if value is None else str(value)
+        initial_value = image_path or (default_image or "")
+        file_picker = ft.FilePicker()
+        self.file_pickers.append(file_picker)
+        preview = ft.Image(
+            src=initial_value,
+            width=cfg.image_width,
+            height=cfg.image_height,
+            # fit=ft.BoxFit.CONTAIN,
+        )
+
+        container = ft.Container(
+            content=ft.Row([], spacing=8),
+            expand=True,
+            data={
+                "image_value": initial_value,
+                "default_image": default_image or "",
+                "image_preview": preview,
+            },
+        )
+
+        def sync_value(new_value: str):
+            preview.src = new_value
+            container.data["image_value"] = new_value
+
+        async def open_file_picker(e):
+            files = await file_picker.pick_files(
+                dialog_title="Выберите изображение",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"],
+                allow_multiple=False,
+            )
+            if files:
+                selected = files[0]
+                selected_path = selected.path or selected.name or ""
+                sync_value(selected_path or (default_image or ""))
+                e.page.update()
+
+        pick_button = ft.IconButton(
+            icon=ft.Icons.FOLDER_OPEN,
+            tooltip="Выбрать файл",
+            on_click=open_file_picker,
+        )
+        container.content = ft.Column(
+            controls=[
+                ft.Text(label),
+                ft.Row([preview, pick_button], spacing=8, expand=True),
+            ],
+            spacing=4,
+        )
+        return container
+
     def create_add_form(self):
+        self.file_pickers = []
         new_fields = {}
         input_controls = []
 
@@ -563,7 +697,7 @@ class EditableTable:
             if field in self.dropdown_options:
                 ctrl = ft.Dropdown(
                     options=[
-                        ft.dropdown.Option(key=str(k), text=str(v))
+                        ft.DropdownOption(key=str(k), text=str(v))
                         for k, v in self.dropdown_options[field]
                     ],
                     value=None,
@@ -585,6 +719,13 @@ class EditableTable:
                     label=self.field_configs[field].label,
                     value=None
                 )
+            elif field_type == "image":
+                ctrl = self._create_image_field(
+                    field=field,
+                    label=self.field_configs[field].label,
+                    value=None,
+                    default_image=self.field_configs[field].default_image,
+                )
             else:
                 ctrl = ft.TextField(label=self.field_configs[field].label, expand=True)
 
@@ -603,6 +744,8 @@ class EditableTable:
                             values.append(ctrl.data['date_value'])
                         elif 'time_value' in ctrl.data:
                             values.append(ctrl.data['time_value'])
+                        elif 'image_value' in ctrl.data:
+                            values.append(ctrl.data['image_value'])
                         else:
                             values.append(ctrl.value)
                     else:
@@ -622,9 +765,15 @@ class EditableTable:
                             ctrl.data['date_value'] = None
                         if 'time_value' in ctrl.data:
                             ctrl.data['time_value'] = None
+                        if 'image_value' in ctrl.data:
+                            ctrl.data['image_value'] = self.field_configs[field_name].default_image or ""
+                            preview = ctrl.data.get("image_preview")
+                            if preview is not None:
+                                preview.src = self.field_configs[field_name].default_image or ""
                         if hasattr(ctrl, 'content') and hasattr(ctrl.content, 'controls'):
-                            text_field = ctrl.content.controls[0]
-                            text_field.value = ""
+                            for item in ctrl.content.controls:
+                                if isinstance(item, ft.TextField):
+                                    item.value = ""
                     else:
                         ctrl.value = ""
                 
@@ -638,6 +787,7 @@ class EditableTable:
         return form_row, handle_add
 
     def create_table(self):
+        self.file_pickers = []
         db_fields = list(self.field_configs.keys())
         query = f"SELECT {', '.join(db_fields)} FROM {self.table_name}"
         
@@ -682,12 +832,13 @@ class EditableTable:
                     continue
 
                 field_type = self.field_types.get(field, "text")
+                value_control = None
 
                 if field in self.dropdown_options:
                     ctrl = ft.Container(
                         content=ft.Dropdown(
                             options=[
-                                ft.dropdown.Option(key=str(k), text=v)
+                                ft.DropdownOption(key=str(k), text=v)
                                 for k, v in self.dropdown_options[field]
                             ],
                             value=str(value),
@@ -696,6 +847,7 @@ class EditableTable:
                         padding=5,
                         expand=True,
                     )
+                    value_control = ctrl.content
                 elif field_type in ("date", "datetime"):
                     # Для дат создаём специальное поле
                     ctrl = ft.Container(
@@ -707,6 +859,7 @@ class EditableTable:
                         padding=5,
                         expand=True,
                     )
+                    value_control = ctrl.content
                 elif field_type == "time":
                     # Для времени создаём специальное поле
                     ctrl = ft.Container(
@@ -717,6 +870,18 @@ class EditableTable:
                         padding=5,
                         expand=True,
                     )
+                    value_control = ctrl.content
+                elif field_type == "image":
+                    image_row = self._create_image_field_inline(
+                        field=field,
+                        value=value,
+                    )
+                    ctrl = ft.Container(
+                        content=image_row,
+                        padding=5,
+                        expand=True,
+                    )
+                    value_control = image_row
                 else:
                     ctrl = ft.Container(
                         content=ft.TextField(
@@ -725,12 +890,9 @@ class EditableTable:
                         padding=5,
                         expand=True,
                     )
-
-                # Для date/time полей сохраняем Container, а не его content
-                if field_type in ("date", "datetime", "time"):
-                    field_controls[field] = ctrl.content
-                else:
-                    field_controls[field] = ctrl.content
+                    value_control = ctrl.content
+                
+                field_controls[field] = value_control
                     
                 cells.append(ft.DataCell(ctrl))
 
@@ -756,10 +918,10 @@ class EditableTable:
                         update_query = f"UPDATE {self.table_name} SET {update_fields} WHERE {db_fields[0]} = %s"
                         self.cursor.execute(update_query, (*values, record_id))
                         self.cursor.connection.commit()
-                        e.page.open(ft.SnackBar(ft.Text("Изменения сохранены")))
+                        e.page.show_dialog(ft.SnackBar(ft.Text("Изменения сохранены")))
                         print(f"[LOG] Updated record {record_id} with values {values}")
                     except Exception as ex:
-                        e.page.open(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
+                        e.page.show_dialog(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
                     e.page.update()
 
                 return save
@@ -791,6 +953,8 @@ class EditableTable:
         return ft.DataTable(
             columns=columns,
             rows=rows,
+            data_row_min_height=self._get_data_row_min_height(),
+            data_row_max_height=float("inf"),
             # width=self.width - 20
         )
 
@@ -811,11 +975,11 @@ class EditableTable:
                 delete_query = f"DELETE FROM {self.table_name} WHERE {list(self.field_configs.keys())[0]} = %s"
                 self.cursor.execute(delete_query, (record_id,))
                 self.cursor.connection.commit()
-                e.page.open(ft.SnackBar(ft.Text("Запись удалена!")))
+                e.page.show_dialog(ft.SnackBar(ft.Text("Запись удалена!")))
                 e.page.update()
             except Exception as ex:
                 print(ex)
-                e.page.open(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
+                e.page.show_dialog(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
                 e.page.update()
 
         return callback

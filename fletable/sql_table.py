@@ -24,6 +24,7 @@ class SqlTable:
     
     Советы:
     - Для дат явно указывайте field_type="date" или "datetime" в FieldConfig
+    - Для изображений используйте field_type="image" (в значении поля хранится путь к файлу)
     - Используйте get_selected_rows() для получения отмеченных строк
     
     Автогенерация FK (подстановка названий):
@@ -85,6 +86,19 @@ class SqlTable:
         for field, cfg in self.field_configs.items():
             field_types[field] = cfg.field_type or "text"
         return field_types
+
+    def _get_data_row_min_height(self) -> int:
+        """
+        Возвращает минимальную высоту строки таблицы с учетом image-полей.
+        """
+        image_heights = [
+            cfg.image_height
+            for cfg in self.field_configs.values()
+            if cfg.field_type == "image"
+        ]
+        if not image_heights:
+            return 48
+        return max(48, max(image_heights) + 16)
 
     def _generate_dropdown_options(self) -> dict[str, list[DisplayValue]]:
         """
@@ -162,6 +176,17 @@ class SqlTable:
         
         return str(value)
 
+    def _create_image_control(self, field: str, value):
+        cfg = self.field_configs[field]
+        image_path = "" if value is None else str(value)
+        image_path = image_path or (cfg.default_image or "")
+        return ft.Image(
+            src=image_path,
+            width=cfg.image_width,
+            height=cfg.image_height,
+            fit=ft.BoxFit.CONTAIN,
+        )
+
     def create_table(self) -> ft.DataTable:
         db_fields = list(self.field_configs.keys())
         query = f"SELECT {', '.join(db_fields)} FROM {self.table_name}"
@@ -193,8 +218,12 @@ class SqlTable:
 
             cells = [ft.DataCell(row_checkbox)]
             for field, value in zip(db_fields, row):
-                display_value = self._format_display_value(field, value)
-                cells.append(ft.DataCell(ft.Text(display_value)))
+                field_type = self.field_types.get(field, "text")
+                if field_type == "image":
+                    cells.append(ft.DataCell(self._create_image_control(field, value)))
+                else:
+                    display_value = self._format_display_value(field, value)
+                    cells.append(ft.DataCell(ft.Text(display_value)))
 
             rows.append(ft.DataRow(cells=cells))
 
@@ -206,6 +235,8 @@ class SqlTable:
         return ft.DataTable(
             columns=columns,
             rows=rows,
+            data_row_min_height=self._get_data_row_min_height(),
+            data_row_max_height=float("inf"),
         )
 
     def get_selected_rows(self) -> list[dict]:

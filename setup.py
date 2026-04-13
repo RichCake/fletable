@@ -8,7 +8,7 @@ def readme():
 
 setup(
     name="fletable",
-    version="0.0.2",
+    version="0.0.4",
     author="RichCake",
     author_email="abs2016123@gmail.com",
     description="Tables that take data from SQL database",
@@ -17,10 +17,10 @@ setup(
     url="https://github.com/RichCake/fletable",
     packages=find_packages(),
     install_requires=[
-        "flet==0.28.3",
-        "flet-cli==0.28.3",
-        "flet-desktop==0.28.3",
-        "flet-web==0.28.3",
+        "flet>=0.80.0",
+        "flet-cli>=0.80.0",
+        "flet-desktop>=0.80.0",
+        "flet-web>=0.80.0",
     ],
     classifiers=[
         "Programming Language :: Python :: 3.12",
