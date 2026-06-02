@@ -116,6 +116,14 @@ class EditableTable:
         # +16 для внутренних отступов контейнера ячейки (padding=5 + запас)
         return max(48, max(image_heights) + 16)
 
+    def _show_alert(self, page: ft.Page, title: str, message: str):
+        dialog = ft.AlertDialog(
+            title=ft.Text(title),
+            content=ft.Text(message),
+            actions=[ft.TextButton("OK", on_click=lambda _: page.pop_dialog())],
+        )
+        page.show_dialog(dialog)
+
     def _generate_dropdown_options(self):
         options = {}
         for field, cfg in self.field_configs.items():
@@ -732,7 +740,8 @@ class EditableTable:
             new_fields[field] = ctrl
             input_controls.append(ctrl)
 
-        def handle_add():
+        def handle_add(e=None):
+            page = e.page if e and hasattr(e, "page") else None
             try:
                 fields = ", ".join(new_fields.keys())
                 placeholders = ", ".join(["%s"] * len(new_fields))
@@ -778,9 +787,13 @@ class EditableTable:
                         ctrl.value = ""
                 
                 print("[INFO] Запись добавлена:", values)
+                if page:
+                    self._show_alert(page, "Успех", "Запись успешно добавлена")
                 return True, "Успешно добавлено"
             except Exception as ex:
                 print("[ERROR] Ошибка добавления:", str(ex))
+                if page:
+                    self._show_alert(page, "Ошибка", f"Не удалось добавить запись: {str(ex)}")
                 return False, f"Ошибка: {str(ex)}"
 
         form_row = ft.Row(input_controls)

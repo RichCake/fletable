@@ -1,0 +1,2 @@
+recursive-include fletable/flet_template *
+include fletable/flet_template/.gitignore

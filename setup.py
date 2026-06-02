@@ -8,7 +8,7 @@ def readme():
 
 setup(
     name="fletable",
-    version="0.0.4",
+    version="0.0.5",
     author="RichCake",
     author_email="abs2016123@gmail.com",
     description="Tables that take data from SQL database",
@@ -16,6 +16,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/RichCake/fletable",
     packages=find_packages(),
+    include_package_data=True,
     install_requires=[
         "flet>=0.80.0",
         "flet-cli>=0.80.0",
@@ -30,4 +31,9 @@ setup(
     keywords="flet sql table ",
     project_urls={"GitHub": "https://github.com/RichCake/fletable"},
     python_requires=">=3.9",
+    entry_points={
+        "console_scripts": [
+            "flet-template-init=fletable.template_init:main",
+        ]
+    },
 )

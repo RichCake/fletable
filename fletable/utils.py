@@ -108,8 +108,8 @@ class LoginView(ft.View):
             dlg = ft.AlertDialog(
                 title=ft.Text("Предупреждение"),
                 content=ft.Text("Неверный логин и пароль"),
-                alignment=ft.alignment.center,
-                title_padding=ft.padding.all(25),
+                alignment=ft.Alignment.CENTER,
+                title_padding=ft.Padding.all(25),
                 actions=[ft.TextButton("Ok", on_click=lambda e: self.page.pop_dialog())],
             )
             self.page.show_dialog(dlg)
