@@ -858,7 +858,7 @@ class EditableTable:
                     self._show_alert(page, "Ошибка", f"Не удалось добавить запись: {str(ex)}")
                 return False, f"Ошибка: {str(ex)}"
 
-        form_row = ft.Row(input_controls)
+        form_row = ft.Column(input_controls, spacing=10)
         return form_row, handle_add
 
     def create_edit_form(self, record_id: int):

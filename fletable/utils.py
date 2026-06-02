@@ -63,6 +63,7 @@ class LoginView(ft.View):
             label="Пароль", password=True, can_reveal_password=True
         )
         self.submit = ft.FilledButton("Войти", on_click=self.check_credentials)
+        self.guest_btn = ft.TextButton("Войти как гость", on_click=self.guest_login)
 
         self.route = "/login"
         self.form = ft.Column(
@@ -70,7 +71,7 @@ class LoginView(ft.View):
                 ft.Row(controls=[title], alignment=ft.MainAxisAlignment.CENTER),
                 self.login,
                 self.password,
-                ft.Row(controls=[self.submit], alignment=ft.MainAxisAlignment.END),
+                ft.Row(controls=[self.guest_btn, self.submit], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ],
             width=300,
         )
@@ -119,5 +120,10 @@ class LoginView(ft.View):
         if self.user_id_col and self.user_id_key and result[1] != -1:
             self.page.session.store.set(self.user_id_key, result[1])
 
+        self.page.go(self.redirect_route)
+        self.page.update()
+
+    def guest_login(self, e):
+        self.page.session.store.set(self.user_role_key, "гость")
         self.page.go(self.redirect_route)
         self.page.update()
