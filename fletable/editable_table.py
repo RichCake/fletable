@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
@@ -756,6 +757,10 @@ class EditableTable:
     def _is_int_field(self, field_name: str) -> bool:
         field_type = (self.field_types.get(field_name, "text") or "").lower()
         return field_name.endswith("_id") or field_type in ("int", "integer")
+    
+    def _is_float_field(self, field_name: str) -> bool:
+        field_type = (self.field_types.get(field_name, "text") or "").lower()
+        return field_type == "float"
 
     def _validate_input_fields(self, values_by_field: dict[str, object], page: ft.Page | None = None) -> bool:
         for field_name, raw_value in values_by_field.items():
@@ -771,6 +776,51 @@ class EditableTable:
                 except ValueError:
                     if page:
                         self._show_alert(page, "Ошибка", f"Поле '{label}' должно быть числом")
+                    return False
+            elif self._is_float_field(field_name):
+                try:
+                    float(value)
+                except ValueError:
+                    if page:
+                        self._show_alert(page, "Ошибка", f"Поле '{label}' должно быть числом")
+                    return False
+            elif (field_type := (self.field_types.get(field_name, "text") or "").lower()).startswith("decimal"):
+                try:
+                    # decimal-8-2 -> precision=8, scale=2
+                    parts = field_type.split("-")
+
+                    if len(parts) == 3:
+                        precision = int(parts[1])
+                        scale = int(parts[2])
+                    else:
+                        precision = None
+                        scale = None
+
+                    dec_value = Decimal(value)
+
+                    # Проверка количества знаков после точки
+                    if scale is not None:
+                        exponent = abs(dec_value.as_tuple().exponent)
+                        if exponent > scale:
+                            raise ValueError(
+                                f"Допустимо не более {scale} знаков после запятой"
+                            )
+
+                    # Проверка общего количества цифр
+                    if precision is not None:
+                        digits_count = len(dec_value.as_tuple().digits)
+                        if digits_count > precision:
+                            raise ValueError(
+                                f"Допустимо не более {precision} цифр"
+                            )
+
+                except (InvalidOperation, ValueError):
+                    if page:
+                        self._show_alert(
+                            page,
+                            "Ошибка",
+                            f"Поле '{label}' должно быть с {scale} знаками после запятой и {precision} знаками всего"
+                        )
                     return False
         return True
 
