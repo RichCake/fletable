@@ -55,6 +55,7 @@ class EditableTable:
                 "deadline": FieldConfig(label="Срок", field_type="date"),
                 "start_time": FieldConfig(label="Время начала", field_type="time"),
             },
+            pk_mapping={"task_id": "ID"},
             where_clause="status = %s",
             where_params=("active",)
         )
@@ -68,6 +69,7 @@ class EditableTable:
         cursor,
         table_name: str,
         field_mapping: dict[str, FieldConfig | str],
+        pk_mapping: dict[str, str],
         width: int = 800,
         height: int = 400,
         where_clause: str | None = None,
@@ -80,6 +82,11 @@ class EditableTable:
             name: cfg if isinstance(cfg, FieldConfig) else FieldConfig(label=str(cfg))
             for name, cfg in field_mapping.items()
         }
+        if len(pk_mapping) != 1:
+            raise ValueError("pk_mapping должен содержать ровно одно поле первичного ключа")
+        self.pk_field, self.pk_label = next(iter(pk_mapping.items()))
+        if self.pk_field not in self.field_configs:
+            raise ValueError("Поле из pk_mapping должно присутствовать в field_mapping")
         self.width = width
         self.height = height
         self.where_clause = where_clause
@@ -129,7 +136,7 @@ class EditableTable:
         for field, cfg in self.field_configs.items():
             # Настройки FK: явно через FieldConfig.foreign_key или по шаблону *_id
             ref_cfg = cfg.foreign_key
-            if ref_cfg or (field.endswith("_id") and field != f"{self.table_name}_id"):
+            if ref_cfg or (field.endswith("_id") and field != self.pk_field):
                 ref_table = ref_cfg.table if ref_cfg else field.replace("_id", "")
                 id_column = ref_cfg.id_column if ref_cfg else field
                 label_column = ref_cfg.label_column if ref_cfg else ref_table
@@ -694,71 +701,144 @@ class EditableTable:
         )
         return container
 
+    def _get_non_pk_fields(self) -> list[str]:
+        return [field for field in self.field_configs.keys() if field != self.pk_field]
+
+    def _create_form_control(self, field: str, value=None):
+        field_type = self.field_types.get(field, "text")
+
+        if field in self.dropdown_options:
+            return ft.Dropdown(
+                options=[
+                    ft.DropdownOption(key=str(k), text=str(v))
+                    for k, v in self.dropdown_options[field]
+                ],
+                value=str(value) if value is not None else None,
+                expand=True,
+                label=self.field_configs[field].label,
+            )
+        if field_type in ("date", "datetime"):
+            return self._create_date_field(
+                field=field,
+                label=self.field_configs[field].label,
+                value=value,
+                is_datetime=field_type == "datetime",
+            )
+        if field_type == "time":
+            return self._create_time_field(
+                field=field,
+                label=self.field_configs[field].label,
+                value=value,
+            )
+        if field_type == "image":
+            return self._create_image_field(
+                field=field,
+                label=self.field_configs[field].label,
+                value=value,
+                default_image=self.field_configs[field].default_image,
+            )
+        return ft.TextField(
+            label=self.field_configs[field].label,
+            value="" if value is None else str(value),
+            expand=True,
+        )
+
+    def _extract_control_value(self, ctrl):
+        if hasattr(ctrl, "data") and isinstance(ctrl.data, dict):
+            if "date_value" in ctrl.data:
+                return ctrl.data["date_value"]
+            if "time_value" in ctrl.data:
+                return ctrl.data["time_value"]
+            if "image_value" in ctrl.data:
+                return ctrl.data["image_value"]
+        return ctrl.value if hasattr(ctrl, "value") else None
+
+    def _is_int_field(self, field_name: str) -> bool:
+        field_type = (self.field_types.get(field_name, "text") or "").lower()
+        return field_name.endswith("_id") or field_type in ("int", "integer")
+
+    def _validate_input_fields(self, values_by_field: dict[str, object], page: ft.Page | None = None) -> bool:
+        for field_name, raw_value in values_by_field.items():
+            value = "" if raw_value is None else str(raw_value).strip()
+            label = self.field_configs[field_name].label
+            if value == "":
+                if page:
+                    self._show_alert(page, "Ошибка", f"Поле '{label}' обязательно для заполнения")
+                return False
+            if self._is_int_field(field_name):
+                try:
+                    int(value)
+                except ValueError:
+                    if page:
+                        self._show_alert(page, "Ошибка", f"Поле '{label}' должно быть числом")
+                    return False
+        return True
+
+    def _clear_form_controls(self, controls_by_field: dict[str, object]):
+        for field_name, ctrl in controls_by_field.items():
+            if hasattr(ctrl, "data") and isinstance(ctrl.data, dict):
+                if "date_value" in ctrl.data:
+                    ctrl.data["date_value"] = None
+                    if hasattr(ctrl, "content") and hasattr(ctrl.content, "controls"):
+                        for item in ctrl.content.controls:
+                            if isinstance(item, ft.TextField):
+                                item.value = ""
+                if "time_value" in ctrl.data:
+                    ctrl.data["time_value"] = None
+                    if hasattr(ctrl, "content") and hasattr(ctrl.content, "controls"):
+                        for item in ctrl.content.controls:
+                            if isinstance(item, ft.TextField):
+                                item.value = ""
+                if "image_value" in ctrl.data:
+                    default_value = self.field_configs[field_name].default_image or ""
+                    ctrl.data["image_value"] = default_value
+                    preview = ctrl.data.get("image_preview")
+                    if preview is not None:
+                        preview.src = default_value
+            elif hasattr(ctrl, "value"):
+                ctrl.value = ""
+
+    def _show_delete_confirmation(self, page: ft.Page, on_confirm):
+        def confirm_and_close(_):
+            page.pop_dialog()
+            on_confirm()
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Подтверждение удаления"),
+            content=ft.Text("Вы уверены, что хотите удалить объект?"),
+            actions=[
+                ft.TextButton("Отмена", on_click=lambda _: page.pop_dialog()),
+                ft.TextButton(
+                    "Удалить",
+                    on_click=confirm_and_close,
+                ),
+            ],
+        )
+        page.show_dialog(dialog)
+
     def create_add_form(self):
         self.file_pickers = []
         new_fields = {}
         input_controls = []
 
-        for field in list(self.field_configs.keys())[1:]:  # Пропускаем ID
-            field_type = self.field_types.get(field, "text")
-            
-            if field in self.dropdown_options:
-                ctrl = ft.Dropdown(
-                    options=[
-                        ft.DropdownOption(key=str(k), text=str(v))
-                        for k, v in self.dropdown_options[field]
-                    ],
-                    value=None,
-                    expand=True,
-                    label=self.field_configs[field].label,
-                )
-            elif field_type in ("date", "datetime"):
-                # Создаём поле с кнопкой для выбора даты
-                ctrl = self._create_date_field(
-                    field=field,
-                    label=self.field_configs[field].label,
-                    value=None,
-                    is_datetime=field_type == "datetime"
-                )
-            elif field_type == "time":
-                # Создаём поле с кнопкой для выбора времени
-                ctrl = self._create_time_field(
-                    field=field,
-                    label=self.field_configs[field].label,
-                    value=None
-                )
-            elif field_type == "image":
-                ctrl = self._create_image_field(
-                    field=field,
-                    label=self.field_configs[field].label,
-                    value=None,
-                    default_image=self.field_configs[field].default_image,
-                )
-            else:
-                ctrl = ft.TextField(label=self.field_configs[field].label, expand=True)
-
+        for field in self._get_non_pk_fields():
+            ctrl = self._create_form_control(field=field, value=None)
             new_fields[field] = ctrl
             input_controls.append(ctrl)
 
         def handle_add(e=None):
             page = e.page if e and hasattr(e, "page") else None
             try:
+                values_by_field = {
+                    field_name: self._extract_control_value(ctrl)
+                    for field_name, ctrl in new_fields.items()
+                }
+                if not self._validate_input_fields(values_by_field, page):
+                    return False, "Ошибка валидации"
+
                 fields = ", ".join(new_fields.keys())
                 placeholders = ", ".join(["%s"] * len(new_fields))
-                values = []
-                for field_name, ctrl in new_fields.items():
-                    # Для DateField и TimeField получаем значение из data атрибута
-                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict):
-                        if 'date_value' in ctrl.data:
-                            values.append(ctrl.data['date_value'])
-                        elif 'time_value' in ctrl.data:
-                            values.append(ctrl.data['time_value'])
-                        elif 'image_value' in ctrl.data:
-                            values.append(ctrl.data['image_value'])
-                        else:
-                            values.append(ctrl.value)
-                    else:
-                        values.append(ctrl.value)
+                values = [values_by_field[field_name] for field_name in new_fields.keys()]
                 
                 insert_query = (
                     f"INSERT INTO {self.table_name} ({fields}) VALUES ({placeholders})"
@@ -766,25 +846,7 @@ class EditableTable:
                 self.cursor.execute(insert_query, values)
                 self.cursor.connection.commit()
                 
-                # Очищаем поля
-                for field_name, ctrl in new_fields.items():
-                    if hasattr(ctrl, 'data') and isinstance(ctrl.data, dict):
-                        # Для date/time полей: Container -> content (Row) -> controls[0] (TextField)
-                        if 'date_value' in ctrl.data:
-                            ctrl.data['date_value'] = None
-                        if 'time_value' in ctrl.data:
-                            ctrl.data['time_value'] = None
-                        if 'image_value' in ctrl.data:
-                            ctrl.data['image_value'] = self.field_configs[field_name].default_image or ""
-                            preview = ctrl.data.get("image_preview")
-                            if preview is not None:
-                                preview.src = self.field_configs[field_name].default_image or ""
-                        if hasattr(ctrl, 'content') and hasattr(ctrl.content, 'controls'):
-                            for item in ctrl.content.controls:
-                                if isinstance(item, ft.TextField):
-                                    item.value = ""
-                    else:
-                        ctrl.value = ""
+                self._clear_form_controls(new_fields)
                 
                 print("[INFO] Запись добавлена:", values)
                 if page:
@@ -798,6 +860,72 @@ class EditableTable:
 
         form_row = ft.Row(input_controls)
         return form_row, handle_add
+
+    def create_edit_form(self, record_id: int):
+        self.file_pickers = []
+        editable_fields = self._get_non_pk_fields()
+        query = f"SELECT {', '.join(self.field_configs.keys())} FROM {self.table_name} WHERE {self.pk_field} = %s"
+        self.cursor.execute(query, (record_id,))
+        row = self.cursor.fetchone()
+        if row is None:
+            raise ValueError(f"Запись с ID {record_id} не найдена")
+
+        row_data = {field: value for field, value in zip(self.field_configs.keys(), row)}
+        edit_fields = {}
+        input_controls = []
+        for field in editable_fields:
+            ctrl = self._create_form_control(field=field, value=row_data.get(field))
+            edit_fields[field] = ctrl
+            input_controls.append(ctrl)
+
+        def handle_save(e=None):
+            page = e.page if e and hasattr(e, "page") else None
+            try:
+                values_by_field = {
+                    field_name: self._extract_control_value(ctrl)
+                    for field_name, ctrl in edit_fields.items()
+                }
+                if not self._validate_input_fields(values_by_field, page):
+                    return False, "Ошибка валидации"
+
+                update_fields = ", ".join(f"{field} = %s" for field in edit_fields.keys())
+                values = [values_by_field[field_name] for field_name in edit_fields.keys()]
+                update_query = (
+                    f"UPDATE {self.table_name} SET {update_fields} WHERE {self.pk_field} = %s"
+                )
+                self.cursor.execute(update_query, (*values, record_id))
+                self.cursor.connection.commit()
+                if page:
+                    self._show_alert(page, "Успех", "Запись успешно обновлена")
+                return True, "Успешно обновлено"
+            except Exception as ex:
+                if page:
+                    self._show_alert(page, "Ошибка", f"Не удалось обновить запись: {str(ex)}")
+                return False, f"Ошибка: {str(ex)}"
+
+        def handle_delete(e=None):
+            page = e.page if e and hasattr(e, "page") else None
+            if page:
+                self._handle_delete(record_id)(e)
+                return True, "Удаление запрошено"
+            return False, "Не удалось удалить запись: отсутствует page"
+
+        save_button = ft.Button("Сохранить", icon=ft.Icons.SAVE, on_click=handle_save)
+        delete_button = ft.Button(
+            "Удалить",
+            icon=ft.Icons.DELETE,
+            bgcolor=ft.Colors.RED_100,
+            on_click=handle_delete,
+        )
+        form_column = ft.Column(
+            controls=[
+                ft.Text(f"{self.pk_label}: {record_id}", size=16, weight=ft.FontWeight.BOLD),
+                *input_controls,
+                # ft.Row([save_button, delete_button], spacing=10),
+            ],
+            spacing=10,
+        )
+        return form_column, handle_save, handle_delete
 
     def create_table(self):
         self.file_pickers = []
@@ -825,9 +953,10 @@ class EditableTable:
             value=False, on_change=on_header_checkbox_change
         )
 
+        pk_index = list(db_fields).index(self.pk_field)
         rows = []
         for row in data:
-            record_id = row[0]
+            record_id = row[pk_index]
             cells = []
             field_controls = {}
 
@@ -840,7 +969,7 @@ class EditableTable:
             cells.append(ft.DataCell(row_checkbox))
 
             for field, value in zip(db_fields, row):
-                if field == db_fields[0]:
+                if field == self.pk_field:
                     cells.append(ft.DataCell(ft.Text(str(value))))
                     continue
 
@@ -928,7 +1057,7 @@ class EditableTable:
                             else:
                                 values.append(ctrl.value)
                         
-                        update_query = f"UPDATE {self.table_name} SET {update_fields} WHERE {db_fields[0]} = %s"
+                        update_query = f"UPDATE {self.table_name} SET {update_fields} WHERE {self.pk_field} = %s"
                         self.cursor.execute(update_query, (*values, record_id))
                         self.cursor.connection.commit()
                         e.page.show_dialog(ft.SnackBar(ft.Text("Изменения сохранены")))
@@ -984,15 +1113,22 @@ class EditableTable:
 
     def _handle_delete(self, record_id: int):
         def callback(e):
-            try:
-                delete_query = f"DELETE FROM {self.table_name} WHERE {list(self.field_configs.keys())[0]} = %s"
-                self.cursor.execute(delete_query, (record_id,))
-                self.cursor.connection.commit()
-                e.page.show_dialog(ft.SnackBar(ft.Text("Запись удалена!")))
-                e.page.update()
-            except Exception as ex:
-                print(ex)
-                e.page.show_dialog(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
-                e.page.update()
+            page = e.page if e and hasattr(e, "page") else None
+            if not page:
+                return
+
+            def confirm_delete():
+                try:
+                    delete_query = f"DELETE FROM {self.table_name} WHERE {self.pk_field} = %s"
+                    self.cursor.execute(delete_query, (record_id,))
+                    self.cursor.connection.commit()
+                    page.show_dialog(ft.SnackBar(ft.Text("Запись удалена!")))
+                    page.update()
+                except Exception as ex:
+                    print(ex)
+                    page.show_dialog(ft.SnackBar(ft.Text(f"Ошибка: {str(ex)}")))
+                    page.update()
+
+            self._show_delete_confirmation(page, confirm_delete)
 
         return callback

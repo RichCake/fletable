@@ -24,7 +24,7 @@ pip install fletable
 Или установите из исходного кода:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/RichCake/fletable.git
 cd fletable
 pip install -e .
 ```
@@ -67,6 +67,7 @@ def main(page: ft.Page):
             "hire_date": FieldConfig(label="Дата приёма", field_type="date"),
             "birth_date": FieldConfig(label="Дата рождения", field_type="date")
         },
+        pk_mapping={"employee_id": "ID"},
         where_clause="active = %s",
         where_params=(True,)
     )
@@ -75,7 +76,7 @@ def main(page: ft.Page):
     add_form, handle_add = table.create_add_form()
     
     def add_record(e):
-        success, message = handle_add()
+        success, message = handle_add(e)
         if success:
             # Обновление таблицы после добавления
             container.content = table.create_table()
@@ -182,6 +183,7 @@ EditableTable(
     cursor,                          # Курсор базы данных (DB-API 2.0)
     table_name: str,                 # Имя таблицы в БД
     field_mapping: dict,             # Маппинг полей {column: label или FieldConfig}
+    pk_mapping: dict[str, str],      # Первичный ключ в формате {"column": "Label"}
     width: int = 800,                # Ширина таблицы (пикселей)
     height: int = 400,               # Высота таблицы (пикселей)
     where_clause: str | None = None, # WHERE-условие для фильтрации (опционально)
@@ -191,9 +193,10 @@ EditableTable(
 
 #### Методы
 
-- **`create_table()`** — создает и возвращает `ft.DataTable` с данными
-- **`create_add_form()`** — создает форму для добавления новых записей, возвращает `(form_row, handle_add)`
-- **`get_selected_rows()`** — возвращает список словарей с данными выделенных строк
+- `**create_table()**` — создает и возвращает `ft.DataTable` с данными
+- `**create_add_form()**` — создает форму для добавления новых записей, возвращает `(form_row, handle_add)`
+- `**create_edit_form(record_id)**` — создает отдельную форму редактирования, возвращает `(form_column, handle_save, handle_delete)`
+- `**get_selected_rows()**` — возвращает список словарей с данными выделенных строк
 
 ### SqlTable
 
@@ -215,8 +218,8 @@ SqlTable(
 
 #### Методы
 
-- **`create_table()`** — создает и возвращает `ft.DataTable`
-- **`get_selected_rows()`** — возвращает выделенные строки
+- `**create_table()**` — создает и возвращает `ft.DataTable`
+- `**get_selected_rows()**` — возвращает выделенные строки
 
 ### FieldConfig
 
@@ -339,7 +342,40 @@ table = EditableTable(
         "start_time": FieldConfig(label="Начало", field_type="time"),
         "end_time": FieldConfig(label="Конец", field_type="time"),
         "created_at": FieldConfig(label="Создано", field_type="datetime")
-    }
+    },
+    pk_mapping={"id": "ID"},
+)
+```
+
+### Отдельная форма редактирования
+
+```python
+edit_form, handle_save, handle_delete = table.create_edit_form(record_id=15)
+
+def on_save(e):
+    success, _ = handle_save(e)
+    if success:
+        table_container.content = table.create_table()
+        page.update()
+
+def on_delete(e):
+    success, _ = handle_delete(e)
+    if success:
+        table_container.content = table.create_table()
+        page.update()
+
+page.add(
+    ft.Column(
+        [
+            edit_form,
+            ft.Row(
+                [
+                    ft.ElevatedButton("Сохранить изменения", on_click=on_save),
+                    ft.ElevatedButton("Удалить", on_click=on_delete),
+                ]
+            ),
+        ]
+    )
 )
 ```
 
@@ -425,6 +461,7 @@ table = EditableTable(
         "department_id": "Отдел",
         "active": "Активен"
     },
+    pk_mapping={"employee_id": "ID"},
     where_clause="active = %s AND department_id = %s",
     where_params=(True, 5)
 )
@@ -441,6 +478,7 @@ def filter_by_department(e):
         cursor=cursor,
         table_name="employees",
         field_mapping=field_mapping,
+        pk_mapping={"employee_id": "ID"},
         where_clause="department_id = %s",
         where_params=(department_id,)
     )
@@ -477,9 +515,8 @@ MIT License
 ## 👨‍💻 Автор
 
 **RichCake**
-Email: arseniikarpov.evro@gmail.com
+Email: [arseniikarpov.evro@gmail.com](mailto:arseniikarpov.evro@gmail.com)
 
 ---
 
 ⭐ Если вам понравился проект, поставьте звезду на GitHub!
-

@@ -127,6 +127,7 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
         cursor=cursor,
         table_name="task",
         field_mapping=task_field_mapping(),
+        pk_mapping={"task_id": "ID"},
         where_clause="status = %s",
         where_params=("active",),
     )
@@ -137,15 +138,53 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
     )
     add_form, add_record = editable_table.create_add_form()
     output = ft.Text("Тестовая панель: выбирай строки, редактируй и сохраняй.")
+    editable_table_container = ft.Container(padding=8)
+    sql_table_container = ft.Container(padding=8)
+
+    def refresh_tables():
+        editable_table_container.content = editable_table.create_table()
+        sql_table_container.content = sql_table.create_table()
+        page.update()
 
     def show_snack(message: str):
         page.show_dialog(ft.SnackBar(ft.Text(message)))
 
-    def on_add(_):
-        ok, message = add_record()
-        show_snack(message)
-        if ok:
-            page.go("/home")
+    def on_add(e):
+        add_record(e)
+        refresh_tables()
+
+    def open_edit_dialog(record_id: int):
+        edit_form, handle_save, handle_delete = editable_table.create_edit_form(record_id)
+
+        def on_save(e):
+            ok, message = handle_save(e)
+            show_snack(message)
+            if ok:
+                page.pop_dialog()
+                refresh_tables()
+
+        def on_delete(e):
+            handle_delete(e)
+
+        dialog = ft.AlertDialog(
+            title=ft.Text(f"Редактирование задачи #{record_id}"),
+            content=ft.Container(content=edit_form, width=700),
+            actions=[
+                ft.TextButton("Сохранить", on_click=on_save),
+                ft.TextButton("Удалить", on_click=on_delete),
+                ft.TextButton("Закрыть", on_click=lambda _: page.pop_dialog()),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.show_dialog(dialog)
+
+    def on_open_edit(_):
+        selected = editable_table.get_selected_rows()
+        if not selected:
+            show_snack("Выберите хотя бы одну строку")
+            return
+        record_id = selected[0]["task_id"]
+        open_edit_dialog(record_id)
 
     def on_selected_editable(_):
         selected = editable_table.get_selected_rows()
@@ -167,6 +206,8 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
         page.session.store.clear()
         page.go("/login")
 
+    refresh_tables()
+
     return ft.View(
         route="/home",
         controls=[
@@ -186,6 +227,7 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
                         ft.Row(
                             controls=[
                                 ft.FilledButton("Добавить", on_click=on_add),
+                                ft.FilledButton("Открыть форму редактирования", on_click=on_open_edit),
                                 ft.TextButton(
                                     "Показать selected (EditableTable)",
                                     on_click=on_selected_editable,
@@ -199,10 +241,10 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
                         output,
                         ft.Divider(),
                         ft.Text("EditableTable (редактируемая)"),
-                        ft.Container(content=editable_table.create_table(), padding=8),
+                        editable_table_container,
                         ft.Divider(),
                         ft.Text("SqlTable (read-only)"),
-                        ft.Container(content=sql_table.create_table(), padding=8),
+                        sql_table_container,
                     ],
                     scroll=ft.ScrollMode.AUTO,
                 )
