@@ -112,7 +112,11 @@ def task_field_mapping():
     return {
         "task_id": "ID",
         "title": "Задача",
-        "image_path": FieldConfig(label="Картинка", field_type="image", default_image="https://flet.dev/img/logo.svg"),
+        "image_path": FieldConfig(
+            label="Картинка",
+            field_type="image",
+            default_image="https://flet.dev/img/logo.svg",
+        ),
         "user_id": FieldConfig(label="Исполнитель"),
         "category_id": FieldConfig(label="Категория"),
         "deadline": FieldConfig(label="Дедлайн", field_type="date"),
@@ -154,7 +158,9 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
         refresh_tables()
 
     def open_edit_dialog(record_id: int):
-        edit_form, handle_save, handle_delete = editable_table.create_edit_form(record_id)
+        edit_form, handle_save, handle_delete = editable_table.create_edit_form(
+            record_id
+        )
 
         def on_save(e):
             ok, message = handle_save(e)
@@ -217,7 +223,9 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
                         ft.Text("Demo: EditableTable + LoginView + sqlite3", size=20),
                         ft.Row(
                             controls=[
-                                ft.TextButton("Показать session.store", on_click=on_show_session),
+                                ft.TextButton(
+                                    "Показать session.store", on_click=on_show_session
+                                ),
                                 ft.TextButton("Логаут", on_click=on_logout),
                             ]
                         ),
@@ -227,7 +235,10 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
                         ft.Row(
                             controls=[
                                 ft.FilledButton("Добавить", on_click=on_add),
-                                ft.FilledButton("Открыть форму редактирования", on_click=on_open_edit),
+                                ft.FilledButton(
+                                    "Открыть форму редактирования",
+                                    on_click=on_open_edit,
+                                ),
                                 ft.TextButton(
                                     "Показать selected (EditableTable)",
                                     on_click=on_selected_editable,
@@ -250,6 +261,8 @@ def build_home_view(page: ft.Page, cursor: SQLiteCompatCursor) -> ft.View:
                 )
             )
         ],
+        expand=True,
+        scroll=ft.ScrollMode.ALWAYS,
     )
 
 
@@ -272,6 +285,8 @@ def main(page: ft.Page):
     page.title = "Fletable temp demo"
     page.window_width = 1300
     page.window_height = 900
+    page.scroll = ft.ScrollMode.ALWAYS
+    page.expand = True
     cursor = build_demo_db()
 
     def route_change(_):

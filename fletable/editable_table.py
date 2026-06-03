@@ -851,6 +851,7 @@ class EditableTable:
     def _show_delete_confirmation(self, page: ft.Page, on_confirm):
         def confirm_and_close(_):
             page.pop_dialog()
+            page.pop_dialog()
             on_confirm()
 
         dialog = ft.AlertDialog(

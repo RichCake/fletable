@@ -230,7 +230,7 @@ SqlTable(
 class FieldConfig:
     label: str                                   # Отображаемое название поля
     foreign_key: ForeignKeyConfig | None = None  # Конфигурация внешнего ключа
-    field_type: str | None = None                # Тип поля: "text", "date", "datetime", "time", "image"
+    field_type: str | None = None                # Тип поля: "text", "date", "datetime", "time", "image", "int", "float", "decimal-8-2"
     default_image: str | None = None             # Путь к картинке по умолчанию для field_type="image"
     image_width: int = 72                        # Фиксированная ширина картинки для field_type="image"
     image_height: int = 72                       # Фиксированная высота картинки для field_type="image"

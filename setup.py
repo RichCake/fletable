@@ -8,7 +8,7 @@ def readme():
 
 setup(
     name="fletable",
-    version="0.0.8",
+    version="0.0.9",
     author="RichCake",
     author_email="abs2016123@gmail.com",
     description="Tables that take data from SQL database",
